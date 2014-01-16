@@ -545,6 +545,9 @@
     /*jshint maxlen: 150*/
 
     var CustomFormatValidators = {};
+    var CustomMetaDataPreValidators = {};
+    var CustomMetaDataPostValidators = {};
+    var CustomSchemaValidators = {};
 
     var Report = function (parentReport) {
         if (parentReport) {
@@ -661,6 +664,8 @@
         }
     }
 
+    ZSchema.Utils = Utils;
+
     // static-methods
 
     /**
@@ -730,6 +735,47 @@
     ZSchema.registerFormatSync = function (name, func) {
         func.__$sync = true;
         return ZSchema.registerFormat(name, func);
+    };
+
+    /**
+     * Register a meta data keyword validation function
+     */
+    ZSchema.registerMetaDataKeyword = function(name, func, after) {
+        ZSchema.expect.string(name);
+        ZSchema.expect.callable(func);
+
+        if (after) {
+            if (CustomMetaDataPostValidators[name]) {
+                throw new Error('Cannot override existing meta data post validator for ' + name);
+            }
+            CustomMetaDataPostValidators[name] = func;
+        } else {
+            if (MetaDataPreValidators[name]) {
+                throw new Error('Cannot override built-in meta data pre validator for ' + name);
+            }
+            if (CustomMetaDataPreValidators[name]) {
+                throw new Error('Cannot override existing meta data pre validator for ' + name);
+            }
+            CustomMetaDataPreValidators[name] = func;
+        }
+    }
+
+    /*
+     * Register a custom schema validator function
+     */
+     ZSchema.registerSchemaValidator = function (name, func) {
+        ZSchema.expect.string(name);
+        ZSchema.expect.callable(func);
+
+        if (SchemaValidators[name]) {
+            throw new Error('Cannot override built-in schema validator for ' + name);
+        }
+
+        if (CustomSchemaValidators[name]) {
+            throw new Error('Cannot override existing schema validator for ' + name);
+        }
+
+        CustomSchemaValidators[name] = func;
     };
 
     /*
@@ -925,6 +971,7 @@
         // fix all references
         this._fixInnerReferences(schema);
         this._fixOuterReferences(schema);
+        this._indexMetaDataKeys(schema);
 
         // then collect for downloading other schemas
         var refObjs = this._collectReferences(schema);
@@ -1019,6 +1066,34 @@
         }
     };
 
+    // create an index of keys with meta data keywords
+    ZSchema.prototype._indexMetaDataKeys = function _indexMetaDataKeys (parentSchema, schema) {
+        if (!schema) {
+            schema = parentSchema;
+        }
+
+        Utils.forEach(schema, function (val, key) {
+            if (typeof key === 'string' && key.indexOf('__') === 0) {
+                return;
+            }
+
+            if (MetaDataPreValidators[key] !== undefined || CustomMetaDataPreValidators[key] !== undefined) {
+                parentSchema.__$metaDataPreValidators = true
+            }
+            if (CustomMetaDataPostValidators[key] !== undefined) {
+                parentSchema.__$metaDataPostValidators = true
+            }
+
+            if (Utils.isObject(val) || Utils.isArray(val)) {
+                if (key === 'properties' || key === 'items') {
+                    _indexMetaDataKeys.call(this, schema, val);
+                } else {
+                    _indexMetaDataKeys.call(this, parentSchema, val);
+                }
+            }
+        }, this);
+    };
+
     // download remote references when needed
     ZSchema.prototype._downloadRemoteReferences = function (report, rootSchema, uri) {
         if (!rootSchema.__remotes) {
@@ -1074,6 +1149,8 @@
                 }
                 if (SchemaValidators[key] !== undefined) {
                     SchemaValidators[key].call(self, report, schema);
+                } else if (CustomSchemaValidators[key] !== undefined) {
+                    CustomSchemaValidators[key].call(self, report, schema);
                 } else if (!hasParentSchema) {
                     if (self.options.noExtraKeywords === true) {
                         report.expect(false, 'KEYWORD_UNEXPECTED', {keyword: key});
@@ -1158,6 +1235,20 @@
         }
 
         function step3() {
+            // Post Validation Meta data transformations
+            if (schema.__$metaDataPostValidators) {
+                Utils.forEach(schema.properties, function(propertySchema, propertyName) {
+                    Utils.forEach(propertySchema, function(keywordValue, keywordName) {
+                        if (MetaDataPostValidators[keywordName] !== undefined) {
+                            MetaDataPostValidators[keywordName].call(self, propertySchema, propertyName, instance, keywordValue);
+                        }
+                        if (CustomMetaDataPostValidators[keywordName] !== undefined) {
+                            CustomMetaDataPostValidators[keywordName].call(self, propertySchema, propertyName, instance, keywordValue);
+                        }
+                    });
+                });
+            }
+
             if (thisIsRoot) {
                 delete report.rootSchema;
             }
@@ -1274,6 +1365,21 @@
         var p = Utils.keys(schema.properties || {});
         // pp - The property set from "patternProperties". Elements of this set will be called regexes for convenience.
         var pp = Utils.keys(schema.patternProperties || {});
+
+        // Check if the schema has are meta data validator that should be applied before validation
+        if (schema.__$metaDataPreValidators) {
+            Utils.forEach(schema.properties, function(propertySchema, propertyName) {
+                Utils.forEach(propertySchema, function(keywordValue, keywordName) {
+                    if (MetaDataPreValidators[keywordName] !== undefined) {
+                        MetaDataPreValidators[keywordName].call(self, propertySchema, propertyName, instance, keywordValue);
+                    }
+                    if (CustomMetaDataPreValidators[keywordName] !== undefined) {
+                        CustomMetaDataPreValidators[keywordName].call(self, propertySchema, propertyName, instance, keywordValue);
+                    }
+                });
+            });
+        }
+
         // m - The property name of the child.
         Utils.forEach(instance, function (propertyValue, m) {
             // s - The set of schemas for the child instance.
@@ -2068,6 +2174,14 @@
                 });
         }
     };
+
+    var MetaDataPreValidators = {
+        'default': function (schema, property, instance, value) {
+            if (instance[property] == null) {
+                instance[property] = value;
+            }
+        }
+    }
 
     module.exports = ZSchema;
 

@@ -740,7 +740,7 @@
     /**
      * Register a meta data keyword validation function
      */
-    ZSchema.registerMetaDataKeyword = function(name, func, after) {
+    ZSchema.registerMetaDataKeyword = function (name, func, after) {
         ZSchema.expect.string(name);
         ZSchema.expect.callable(func);
 
@@ -758,12 +758,12 @@
             }
             CustomMetaDataPreValidators[name] = func;
         }
-    }
+    };
 
     /*
      * Register a custom schema validator function
      */
-     ZSchema.registerSchemaValidator = function (name, func) {
+    ZSchema.registerSchemaValidator = function (name, func) {
         ZSchema.expect.string(name);
         ZSchema.expect.callable(func);
 
@@ -1067,7 +1067,7 @@
     };
 
     // create an index of keys with meta data keywords
-    ZSchema.prototype._indexMetaDataKeys = function _indexMetaDataKeys (parentSchema, schema) {
+    ZSchema.prototype._indexMetaDataKeys = function _indexMetaDataKeys(parentSchema, schema) {
         if (!schema) {
             schema = parentSchema;
         }
@@ -1078,10 +1078,10 @@
             }
 
             if (MetaDataPreValidators[key] !== undefined || CustomMetaDataPreValidators[key] !== undefined) {
-                parentSchema.__$metaDataPreValidators = true
+                parentSchema.__$metaDataPreValidators = true;
             }
             if (CustomMetaDataPostValidators[key] !== undefined) {
-                parentSchema.__$metaDataPostValidators = true
+                parentSchema.__$metaDataPostValidators = true;
             }
 
             if (Utils.isObject(val) || Utils.isArray(val)) {
@@ -1237,8 +1237,8 @@
         function step3() {
             // Post Validation Meta data transformations
             if (schema.__$metaDataPostValidators) {
-                Utils.forEach(schema.properties, function(propertySchema, propertyName) {
-                    Utils.forEach(propertySchema, function(keywordValue, keywordName) {
+                Utils.forEach(schema.properties, function (propertySchema, propertyName) {
+                    Utils.forEach(propertySchema, function (keywordValue, keywordName) {
                         if (CustomMetaDataPostValidators[keywordName] !== undefined) {
                             CustomMetaDataPostValidators[keywordName].call(self, propertySchema, propertyName, instance, keywordValue);
                         }
@@ -1365,8 +1365,8 @@
 
         // Check if the schema has are meta data validator that should be applied before validation
         if (schema.__$metaDataPreValidators) {
-            Utils.forEach(schema.properties, function(propertySchema, propertyName) {
-                Utils.forEach(propertySchema, function(keywordValue, keywordName) {
+            Utils.forEach(schema.properties, function (propertySchema, propertyName) {
+                Utils.forEach(propertySchema, function (keywordValue, keywordName) {
                     if (MetaDataPreValidators[keywordName] !== undefined) {
                         MetaDataPreValidators[keywordName].call(self, propertySchema, propertyName, instance, keywordValue);
                     }
@@ -2178,7 +2178,7 @@
                 instance[property] = value;
             }
         }
-    }
+    };
 
     module.exports = ZSchema;
 

@@ -1239,9 +1239,6 @@
             if (schema.__$metaDataPostValidators) {
                 Utils.forEach(schema.properties, function(propertySchema, propertyName) {
                     Utils.forEach(propertySchema, function(keywordValue, keywordName) {
-                        if (MetaDataPostValidators[keywordName] !== undefined) {
-                            MetaDataPostValidators[keywordName].call(self, propertySchema, propertyName, instance, keywordValue);
-                        }
                         if (CustomMetaDataPostValidators[keywordName] !== undefined) {
                             CustomMetaDataPostValidators[keywordName].call(self, propertySchema, propertyName, instance, keywordValue);
                         }

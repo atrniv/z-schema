@@ -1205,7 +1205,7 @@
         ZSchema.expect.object(schema);
 
         var self = this;
-
+        var rollbacks = [];
         var thisIsRoot = false;
         if (!report.rootSchema) {
             report.rootSchema = schema;
@@ -1223,6 +1223,19 @@
         }
 
         function step1(val, key) {
+            // Check if the schema has are meta data validator that should be applied before validation
+            if (schema.__$metaDataPreValidators) {
+                Utils.forEach(schema.properties, function (propertySchema, propertyName) {
+                    Utils.forEach(propertySchema, function (keywordValue, keywordName) {
+                        if (MetaDataPreValidators[keywordName] !== undefined) {
+                            MetaDataPreValidators[keywordName].call(self, propertySchema, propertyName, instance, keywordValue, rollbacks);
+                        }
+                        if (CustomMetaDataPreValidators[keywordName] !== undefined) {
+                            CustomMetaDataPreValidators[keywordName].call(self, propertySchema, propertyName, instance, keywordValue, rollbacks);
+                        }
+                    });
+                });
+            }
             if (InstanceValidators[key] !== undefined) {
                 return InstanceValidators[key].call(self, report, schema, instance);
             }
@@ -1238,8 +1251,16 @@
         }
 
         function step3() {
+            // Apply rollbacks in case of failed validation
+            if (!report.isValid()) {
+                while (rollbacks.length > 0) {
+                    var rollback = rollbacks.pop();
+                    rollback();
+                }
+            }
+
             // Post Validation Meta data transformations
-            if (schema.__$metaDataPostValidators) {
+            if (schema.__$metaDataPostValidators && report.isValid()) {
                 Utils.forEach(schema.properties, function (propertySchema, propertyName) {
                     Utils.forEach(propertySchema, function (keywordValue, keywordName) {
                         if (CustomMetaDataPostValidators[keywordName] !== undefined) {
@@ -1365,20 +1386,6 @@
         var p = Utils.keys(schema.properties || {});
         // pp - The property set from "patternProperties". Elements of this set will be called regexes for convenience.
         var pp = Utils.keys(schema.patternProperties || {});
-
-        // Check if the schema has are meta data validator that should be applied before validation
-        if (schema.__$metaDataPreValidators) {
-            Utils.forEach(schema.properties, function (propertySchema, propertyName) {
-                Utils.forEach(propertySchema, function (keywordValue, keywordName) {
-                    if (MetaDataPreValidators[keywordName] !== undefined) {
-                        MetaDataPreValidators[keywordName].call(self, propertySchema, propertyName, instance, keywordValue);
-                    }
-                    if (CustomMetaDataPreValidators[keywordName] !== undefined) {
-                        CustomMetaDataPreValidators[keywordName].call(self, propertySchema, propertyName, instance, keywordValue);
-                    }
-                });
-            });
-        }
 
         // m - The property name of the child.
         Utils.forEach(instance, function (propertyValue, m) {
@@ -2093,18 +2100,24 @@
                 finish();
                 return;
             } else {
-                var self = this;
-                return Promise.all(schema.oneOf.map(function (oneOf) {
-                    var subReport = new Report(report);
-                    return self._validateObject(subReport, oneOf, instance)
-                        .then(function () {
-                            if (subReport.isValid()) {
-                                passes++;
-                            } else {
-                                subReports.push(subReport);
-                            }
-                        });
-                })).then(finish);
+                var self = this,
+                    p = Promise.resolve();
+
+                // We resolve the promises sequentially to ensure meta-data transformations can be rolled back
+                schema.oneOf.forEach(function (sch) {
+                    p = p.then(function () {
+                        var subReport = new Report(report);
+                        return self._validateObject(subReport, sch, instance)
+                            .then(function () {
+                                if (subReport.isValid()) {
+                                    passes++;
+                                } else {
+                                    subReports.push(subReport);
+                                }
+                            });
+                    });
+                });
+                return p.then(finish);
             }
         },
         not: function (report, schema, instance) {
@@ -2176,8 +2189,13 @@
     };
 
     var MetaDataPreValidators = {
-        'default': function (schema, property, instance, value) {
+        'default': function (schema, property, instance, value, rollbacks) {
             if (instance[property] == null) {
+                rollbacks.push((function (property, instance) {
+                    return function () {
+                        delete instance[property];
+                    };
+                })(property, instance));
                 instance[property] = value;
             }
         }

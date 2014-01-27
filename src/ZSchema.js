@@ -665,6 +665,7 @@
     }
 
     ZSchema.Utils = Utils;
+    ZSchema.Promise = Promise;
 
     // static-methods
 
